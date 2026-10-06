@@ -33,3 +33,7 @@ coverage/
 *.tsbuildinfo
 .env
 .env.*
+
+# ML artifacts (regenerate with python3 ml/train.py)
+__pycache__/
+ml/model.joblib

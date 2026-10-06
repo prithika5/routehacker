@@ -6,6 +6,7 @@
 #include "CSVBusSystem.h"
 #include "TransportationPlannerConfig.h"
 #include "DijkstraTransportationPlanner.h"
+#include "PredictedSpeedStreetMap.h"
 #include "GeographicUtils.h"
 
 TEST(CSVOSMTransporationPlanner, SimpleTest){
@@ -385,4 +386,66 @@ TEST(CSVOSMTransporationPlanner, PathDescriptionFailureCases){
 
     std::vector<CTransportationPlanner::TTripStep> BadNodePath = {{CTransportationPlanner::ETransportationMode::Walk,99}};
     EXPECT_FALSE(Planner.GetPathDescription(BadNodePath, Description));
+}
+
+namespace{
+std::shared_ptr<CStreetMap> PredictedSpeedTestMap(const std::string &way10Tags){
+    auto InStreamOSM = std::make_shared<CStringDataSource>( "<?xml version='1.0' encoding='UTF-8'?>"
+                                                            "<osm version=\"0.6\" generator=\"osmconvert 0.8.5\">"
+                                                            "<node id=\"1\" lat=\"38.5\" lon=\"-121.7\"/>"
+                                                            "<node id=\"2\" lat=\"38.6\" lon=\"-121.7\"/>"
+                                                            "<node id=\"3\" lat=\"38.6\" lon=\"-121.8\"/>"
+                                                            "<node id=\"4\" lat=\"38.5\" lon=\"-121.8\"/>"
+                                                            "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><nd ref=\"3\"/><nd ref=\"4\"/>"
+                                                            + way10Tags +
+                                                            "</way>"
+                                                            "<way id=\"11\"><nd ref=\"4\"/><nd ref=\"1\"/></way>"
+                                                            "</osm>");
+    return std::make_shared<COpenStreetMap>(std::make_shared<CXMLReader>(InStreamOSM));
+}
+
+double PredictedSpeedBusTime(std::shared_ptr<CStreetMap> map){
+    auto Stops = std::make_shared<CDSVReader>(std::make_shared<CStringDataSource>("stop_id,node_id\n101,1\n102,2\n103,3\n104,4"),',');
+    auto Routes = std::make_shared<CDSVReader>(std::make_shared<CStringDataSource>("route,stop_id\nA,101\nA,102\nA,103\nA,104\nA,101"),',');
+    auto Config = std::make_shared<STransportationPlannerConfig>(map, std::make_shared<CCSVBusSystem>(Stops, Routes));
+    CDijkstraTransportationPlanner Planner(Config);
+    std::vector< CTransportationPlanner::TTripStep > Path;
+    return Planner.FindFastestPath(1,3,Path);
+}
+
+double PredictedSpeedBusDistance(){
+    return SGeographicUtils::HaversineDistanceInMiles(CStreetMap::SLocation(38.5,-121.7),CStreetMap::SLocation(38.6,-121.7)) +
+           SGeographicUtils::HaversineDistanceInMiles(CStreetMap::SLocation(38.6,-121.7),CStreetMap::SLocation(38.6,-121.8));
+}
+}
+
+TEST(CSVOSMTransporationPlanner, PredictedSpeedLoadTest){
+    auto Reader = std::make_shared<CDSVReader>(std::make_shared<CStringDataSource>(
+        "way_id,predicted_mph,confidence\n10,40,0.91\nbad,row,0\n11,0,0.5\n12,35,0.77"),',');
+    auto Predictions = CPredictedSpeedStreetMap::LoadPredictions(Reader);
+    EXPECT_EQ(Predictions.size(), 2u);
+    EXPECT_EQ(Predictions[10], 40.0);
+    EXPECT_EQ(Predictions[12], 35.0);
+}
+
+TEST(CSVOSMTransporationPlanner, PredictedSpeedFallbackTest){
+    // No maxspeed tag: the predicted 40 mph replaces the 25 mph default.
+    auto Map = std::make_shared<CPredictedSpeedStreetMap>(PredictedSpeedTestMap(""), CPredictedSpeedStreetMap::TPredictions{{10, 40.0}});
+    auto Way = Map->WayByID(10);
+    ASSERT_TRUE(Way);
+    EXPECT_TRUE(Way->HasAttribute("maxspeed:predicted"));
+    EXPECT_EQ(Way->GetAttribute("maxspeed:predicted"), "40 mph");
+    EXPECT_EQ(Way->AttributeCount(), 1u);
+    EXPECT_EQ(Way->GetAttributeKey(0), "maxspeed:predicted");
+    EXPECT_DOUBLE_EQ(PredictedSpeedBusTime(Map), PredictedSpeedBusDistance() / 40.0 + (60.0 / 3600.0));
+    // Without predictions the planner falls back to the 25 mph default.
+    EXPECT_DOUBLE_EQ(PredictedSpeedBusTime(PredictedSpeedTestMap("")), PredictedSpeedBusDistance() / 25.0 + (60.0 / 3600.0));
+}
+
+TEST(CSVOSMTransporationPlanner, PredictedSpeedRealTagWinsTest){
+    // A real maxspeed tag always takes priority over a prediction.
+    auto Map = std::make_shared<CPredictedSpeedStreetMap>(PredictedSpeedTestMap("<tag k=\"maxspeed\" v=\"20 mph\"/>"),
+                                                          CPredictedSpeedStreetMap::TPredictions{{10, 40.0}});
+    EXPECT_FALSE(Map->WayByID(10)->HasAttribute("maxspeed:predicted"));
+    EXPECT_DOUBLE_EQ(PredictedSpeedBusTime(Map), PredictedSpeedBusDistance() / 20.0 + (60.0 / 3600.0));
 }

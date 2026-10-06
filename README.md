@@ -33,6 +33,7 @@ The app now runs the real OpenStreetMap-based C++ planner by default for route r
 - Fastest vs. shortest routing
 - Searchable Davis start and destination inputs
 - Route normalization layer for cleaner C++ planner output
+- Random Forest speed-limit model that fills in missing OSM `maxspeed` tags for route-time estimation (see [ml/README.md](ml/README.md))
 - Frontend and backend tests
 - Dev container support for both C++ and web development
 

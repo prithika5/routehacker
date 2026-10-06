@@ -127,6 +127,10 @@ struct CDijkstraTransportationPlanner::SImplementation{
             if(way->HasAttribute("maxspeed")){
                 speed = ParseSpeed(way->GetAttribute("maxspeed"), ds);
             }
+            else if(way->HasAttribute("maxspeed:predicted")){
+                // ML fallback (ml/train.py) for roads with no posted speed tag
+                speed = ParseSpeed(way->GetAttribute("maxspeed:predicted"), ds);
+            }
             if(speed <= 0.0){
                 speed = ds;
             }
