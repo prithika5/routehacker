@@ -1,0 +1,14 @@
+**/node_modules
+client/dist
+bin
+obj
+testbin
+testobj
+testtmp
+htmlcov
+lib
+ml
+docs
+.git
+.devcontainer
+**/.env
