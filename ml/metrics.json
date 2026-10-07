@@ -1,0 +1,172 @@
+{
+  "n_ways": 1644,
+  "n_labeled": 145,
+  "n_unlabeled_target": 1369,
+  "features": [
+    "lanes",
+    "has_lanes",
+    "oneway",
+    "has_name",
+    "has_ref",
+    "bridge",
+    "layer",
+    "paved",
+    "has_surface",
+    "has_cycleway",
+    "bicycle_no",
+    "hgv_tagged",
+    "has_destination",
+    "access_restricted",
+    "roundabout",
+    "traffic_calming",
+    "length_mi",
+    "node_count",
+    "lat",
+    "lon",
+    "hw_motorway",
+    "hw_trunk",
+    "hw_primary",
+    "hw_secondary",
+    "hw_tertiary",
+    "hw_residential",
+    "hw_unclassified",
+    "hw_service",
+    "hw_living_street",
+    "suffix_avenue",
+    "suffix_boulevard",
+    "suffix_circle",
+    "suffix_court",
+    "suffix_drive",
+    "suffix_highway",
+    "suffix_lane",
+    "suffix_loop",
+    "suffix_place",
+    "suffix_road",
+    "suffix_street",
+    "suffix_terrace",
+    "suffix_way"
+  ],
+  "class_support": {
+    "15": 1,
+    "25": 38,
+    "30": 43,
+    "35": 17,
+    "55": 1,
+    "65": 45
+  },
+  "class_distinct_streets": {
+    "15": 1,
+    "25": 18,
+    "30": 4,
+    "35": 1,
+    "55": 1,
+    "65": 31
+  },
+  "v1": {
+    "cv_accuracy": 0.9586206896551724,
+    "cv_pred_distribution": {
+      "25": 44,
+      "30": 39,
+      "35": 17,
+      "65": 45
+    },
+    "unlabeled_pred_distribution": {
+      "25": 1181,
+      "30": 156,
+      "35": 31,
+      "55": 1
+    },
+    "per_class_recall": {
+      "15": 0.0,
+      "25": 1.0,
+      "30": 0.9069767441860465,
+      "35": 1.0,
+      "55": 0.0,
+      "65": 1.0
+    }
+  },
+  "dropped_classes": [
+    15,
+    55
+  ],
+  "kept_classes": [
+    25,
+    30,
+    35,
+    65
+  ],
+  "v2": {
+    "holdout_accuracy": 0.9655172413793104,
+    "holdout_size": 29,
+    "holdout_per_class": {
+      "25": {
+        "precision": 0.8888888888888888,
+        "recall": 1.0,
+        "support": 8
+      },
+      "30": {
+        "precision": 1.0,
+        "recall": 0.8888888888888888,
+        "support": 9
+      },
+      "35": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 3
+      },
+      "65": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 9
+      }
+    },
+    "holdout_confusion": [
+      [
+        8,
+        0,
+        0,
+        0
+      ],
+      [
+        1,
+        8,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        3,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        9
+      ]
+    ],
+    "repeated_cv_mean": 0.9720197044334976,
+    "repeated_cv_std": 0.023223401145104447,
+    "kfold_cv_accuracy": 0.972027972027972,
+    "v1_kfold_cv_accuracy_on_kept_classes": 0.972027972027972,
+    "unlabeled_pred_distribution": {
+      "25": 1201,
+      "30": 137,
+      "35": 31
+    },
+    "top_features": {
+      "lat": 0.12222614811669463,
+      "has_ref": 0.1076852424129103,
+      "hw_primary": 0.10212794996929722,
+      "suffix_boulevard": 0.07703433277718819,
+      "bicycle_no": 0.06986167413140676,
+      "hw_secondary": 0.06500415725487567,
+      "hgv_tagged": 0.0635663996110579,
+      "lanes": 0.05497148713114016,
+      "hw_motorway": 0.05360246257011403,
+      "has_lanes": 0.04271843471310684
+    }
+  },
+  "n_predictions_written": 1325
+}

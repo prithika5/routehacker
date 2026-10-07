@@ -3,12 +3,14 @@
 #include "FileDataFactory.h"
 #include "GeographicUtils.h"
 #include "OpenStreetMap.h"
+#include "PredictedSpeedStreetMap.h"
 #include "StringUtils.h"
 #include "TransportationPlannerConfig.h"
 #include "XMLReader.h"
 #include "DijkstraTransportationPlanner.h"
 
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -171,7 +173,7 @@ std::string BuildCampusFeel(const std::string &optimization) {
     return "This route comes from the C++ planner's shortest-distance search over the street network.";
 }
 
-std::string BuildGeometryJSON(std::shared_ptr<COpenStreetMap> map,
+std::string BuildGeometryJSON(std::shared_ptr<CStreetMap> map,
                               const std::vector<CTransportationPlanner::TTripStep> &tripSteps) {
     std::ostringstream geometryJSON;
     geometryJSON << "{\"type\":\"LineString\",\"coordinates\":[";
@@ -202,7 +204,7 @@ void WriteErrorJSON(const std::string &code, const std::string &message) {
               << EscapeJSONString(message) << "\"}}";
 }
 
-int Main(const std::string &dataDirectory) {
+int Main(const std::string &dataDirectory, bool usePredictedSpeeds) {
     std::ostringstream buffer;
     buffer << std::cin.rdbuf();
     const auto payload = buffer.str();
@@ -218,7 +220,14 @@ int Main(const std::string &dataDirectory) {
     auto stopcsv = std::make_shared<CDSVReader>(dataFactory->CreateSource("stops.csv"), ',');
     auto routecsv = std::make_shared<CDSVReader>(dataFactory->CreateSource("routes.csv"), ',');
 
-    auto map = std::make_shared<COpenStreetMap>(xml);
+    std::shared_ptr<CStreetMap> map = std::make_shared<COpenStreetMap>(xml);
+
+    // ML fallback speeds for roads without a maxspeed tag (see ml/train.py).
+    const auto predictionsPath = std::filesystem::path(dataDirectory) / "speed_predictions.csv";
+    if (usePredictedSpeeds && std::filesystem::exists(predictionsPath)) {
+        auto predictionReader = std::make_shared<CDSVReader>(dataFactory->CreateSource("speed_predictions.csv"), ',');
+        map = std::make_shared<CPredictedSpeedStreetMap>(map, CPredictedSpeedStreetMap::LoadPredictions(predictionReader));
+    }
     auto bus = std::make_shared<CCSVBusSystem>(stopcsv, routecsv);
     auto config = std::make_shared<STransportationPlannerConfig>(map, bus);
     CDijkstraTransportationPlanner planner(config);
@@ -517,13 +526,17 @@ int Main(const std::string &dataDirectory) {
 
 int main(int argc, char *argv[]) {
     std::string dataDirectory = "./data";
+    bool usePredictedSpeeds = true;
 
     for (int index = 1; index < argc; index++) {
         const std::string argument(argv[index]);
         if (argument.rfind("--data=", 0) == 0) {
             dataDirectory = argument.substr(7);
         }
+        else if (argument == "--no-predicted-speeds") {
+            usePredictedSpeeds = false;
+        }
     }
 
-    return Main(dataDirectory);
+    return Main(dataDirectory, usePredictedSpeeds);
 }
