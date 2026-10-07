@@ -1,12 +1,19 @@
+# Matches the live routehacker-api service on Render (Node runtime).
+# `npm install` in server/ also compiles the C++ planner via the server's
+# postinstall script (server/scripts/build-planner.mjs).
+# To run the API as a container instead, use the Dockerfile at the repo root.
 services:
   - type: web
     name: routehacker-api
-    runtime: docker
-    dockerfilePath: ./Dockerfile
+    runtime: node
+    rootDir: server
+    branch: main
+    buildCommand: npm install
+    startCommand: npm run start
     plan: free
     healthCheckPath: /api/health
     envVars:
+      - key: NODE_VERSION
+        value: 20
       - key: ROUTE_ENGINE
         value: cpp
-      - key: CLIENT_ORIGIN
-        value: https://routehacker.vercel.app

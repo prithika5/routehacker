@@ -152,14 +152,16 @@ That starts:
 
 ## Deployment
 
-The API deploys to Render as a Docker service ([Dockerfile](Dockerfile), [render.yaml](render.yaml)). The image compiles `routeplanner_web` in a build stage, then runs the Express server with the binary, the map and bus data, and the speed predictions. Only the server's production dependencies are installed.
+The API runs on Render as a Node web service rooted at `server/` ([render.yaml](render.yaml)). Its build command, `npm install`, also compiles the C++ planner: the server's `postinstall` script ([server/scripts/build-planner.mjs](server/scripts/build-planner.mjs)) runs `make bin/routeplanner_web` at the repo root. If the toolchain is missing, the install still succeeds and the API answers `CPP_PLANNER_MISSING`, which the frontend shows as a plain-language error.
+
+You can also run the API as a container. The [Dockerfile](Dockerfile) compiles the planner in a build stage and ships only the server, the binary and the data:
 
 ```bash
 docker build -t routehacker-api .
 docker run -p 3000:3000 -e CLIENT_ORIGIN=http://localhost:5173 routehacker-api
 ```
 
-The frontend deploys to Vercel from `client/`, with `VITE_API_BASE_URL` set to the API's URL. Set `CLIENT_ORIGIN` on the API to the frontend's URL so the browser is allowed to call it.
+The frontend deploys to Vercel from `client/`, with `VITE_API_BASE_URL` set to the API's URL. Set `CLIENT_ORIGIN` on the API to the frontend's URL to restrict which sites may call it.
 
 ## Engine Control
 
