@@ -1,187 +1,137 @@
-# RouteHacker
-
-RouteHacker is a full-stack transportation planner for UC Davis. It wraps the original ECS 34 C++ routing project in a React frontend and Express API so users can request routes on a real map instead of through a CLI.
-
-Every route request runs the real OpenStreetMap-based C++ planner, which answers in about a tenth of a second. Results show the trip time, a walking/bus breakdown, and directions drawn as a strip map: dotted legs for walking, solid teal legs for buses with their route letters.
-
-## Live Demo
-
-- Frontend: `https://routehacker.vercel.app`
-- Backend API: `https://routehacker-api.onrender.com`
-
-## Screenshots
-
-<p>
-  <img src="docs/screenshots/desktop-route.png" alt="Fastest route from AggieWorks Studio to West Village on desktop" width="72%" />
-  <img src="docs/screenshots/phone-directions.png" alt="Strip-map directions on a phone" width="24%" />
+<p align="center">
+  <img src="client/public/logo-lockup.png" alt="RouteHacker" width="300" />
 </p>
+
+<p align="center">
+  <strong>Walking, biking and bus directions around UC Davis, computed by a C++ routing engine on real OpenStreetMap and bus data.</strong>
+</p>
+
+<p align="center">
+  <a href="https://routehacker.vercel.app"><strong>Try it live</strong></a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#run-it-locally">Run it locally</a> ·
+  <a href="ml/README.md">Speed-limit model</a>
+</p>
+
+![RouteHacker showing the fastest route from AggieWorks Studio to West Village](docs/screenshots/route-desktop.png)
+
+<p align="center">
+  <img src="docs/screenshots/phone-plan.png" alt="Planning a trip on a phone" width="32%" />
+  &nbsp;
+  <img src="docs/screenshots/phone-directions.png" alt="Strip-map directions on a phone" width="32%" />
+</p>
+
+## What it does
+
+Pick where you're starting and where you're headed, choose **Fastest** or **Shortest**, and RouteHacker plans the trip:
+
+- **Fastest** searches walking, biking and the campus bus network by travel time, including transfers between bus lines.
+- **Shortest** finds the shortest path on foot.
+- The result shows total time and distance, how long you'll spend walking, biking or on the bus, and step-by-step directions drawn as a **strip map**: dotted legs for walking, dashed for biking, solid teal for buses with their route letters (`E`, `X → V`).
+- The route is drawn on a full-screen map with start and destination pins.
+
+Every request runs the real planner. There's no precomputed or mocked routing.
 
 ## Highlights
 
-- React + Vite frontend in `client/`
-- Express backend in `server/`
-- Real C++ transportation planner from the ECS 34 codebase
-- OpenStreetMap + bus-system data from `data/`
-- Full-screen Leaflet map with a streamlined route planning UI
-- Fastest vs. shortest routing
-- Searchable Davis start and destination inputs
-- Route normalization layer for cleaner C++ planner output
-- Random Forest speed-limit model that fills in missing OSM `maxspeed` tags for route-time estimation (see [ml/README.md](ml/README.md))
-- Frontend and backend tests
-- Dev container support for both C++ and web development
+| | |
+| --- | --- |
+| **C++ routing engine** | Dijkstra over a multimodal graph built from 1,644 OpenStreetMap roads, 297 bus stops and 17 bus routes. Originally the ECS 34 transportation planner, now served over HTTP. |
+| **100× faster** | Routes used to take ~15 s. Profiling found 90% of the time in the XML reader, which rescanned the whole 1.2 MB map for every self-closing tag (quadratic). It now uses expat's empty-element signal instead: **~0.14 s per route**, identical output. |
+| **ML speed limits** | Only 145 of 1,644 roads have a posted speed limit. A scikit-learn Random Forest predicts the rest (**96.6% held-out accuracy**), and the planner uses those predictions when it estimates bus travel times. [Details](#speed-limit-model) |
+| **Product UI** | React + Leaflet, keyboard-navigable place search, plain-language directions and errors, responsive down to phone width, reduced-motion support. |
+| **Tested** | 63 C++ (GoogleTest), 8 API and 9 frontend tests. |
 
-## Architecture
+## How it works
 
-### Request Flow
-
-1. The React app submits `start`, `end`, `optimization`, and `modePreference` to `POST /api/route`.
-2. Express validates the request in [server/src/routes/routeRouter.js](server/src/routes/routeRouter.js).
-3. The route service in [server/src/services/routeService.js](server/src/services/routeService.js) selects the routing engine.
-4. The C++ adapter in [src/routeplanner_web.cpp](src/routeplanner_web.cpp) loads `davis.osm`, `stops.csv`, `routes.csv`, and the ML-predicted speed limits in `speed_predictions.csv`, computes a route, and returns JSON.
-5. The backend normalizes the response in [server/src/services/cppPlannerService.js](server/src/services/cppPlannerService.js) so the UI receives cleaner steps, breakdowns, and summaries.
-6. The frontend renders the route geometry, summary metrics, and directions.
-
-## Current Engine Behavior
-
-The app is currently configured to prefer the real C++ planner path.
-
-- Default mode: `cpp`
-- Successful C++ responses return `engine: "cpp"`
-- If the C++ planner cannot complete, the API returns an error instead of silently switching engines
-- The C++ adapter currently supports `modePreference: "any"` only
-
-That means the strongest demo path is:
-
-```json
-{
-  "start": "aggie_works",
-  "end": "west_village",
-  "optimization": "fastest",
-  "modePreference": "any"
-}
+```mermaid
+flowchart LR
+  A["React app<br/>Vercel"] -->|"POST /api/route"| B["Express API<br/>Render"]
+  B -->|"request JSON on stdin,<br/>route JSON on stdout"| C["routeplanner_web<br/>C++ planner"]
+  D[("davis.osm<br/>bus stops + routes")] --> C
+  E[("speed_predictions.csv")] --> C
+  F["ml/train.py<br/>Random Forest"] -.->|generates| E
 ```
 
-### Performance
+1. The React app sends `start`, `end` and `optimization` to `POST /api/route`.
+2. The Express API ([routeRouter.js](server/src/routes/routeRouter.js), [routeService.js](server/src/services/routeService.js)) validates the request and caches recent results.
+3. [cppPlannerService.js](server/src/services/cppPlannerService.js) runs the compiled planner, [routeplanner_web.cpp](src/routeplanner_web.cpp), with the request as JSON on stdin, and enforces a timeout.
+4. The planner loads the street map, the bus system and the predicted speed limits, finds the nearest map nodes, and runs Dijkstra ([DijkstraTransportationPlanner.cpp](src/DijkstraTransportationPlanner.cpp)) for the fastest or shortest path.
+5. The API turns the planner's output into clean steps, a walk/bike/bus breakdown and map geometry, which the frontend draws as the strip map and the route line.
 
-A route request takes about 0.14 seconds end to end. It used to take about 15 seconds: profiling showed 90% of the time in the XML reader, which rescanned the whole 1.2 MB map file for every self-closing tag. The reader now uses expat's own empty-element signal instead, with identical output. The backend still has a timeout guard (`CPP_PLANNER_TIMEOUT_MS`, default 30 s) so a stalled planner call fails clearly instead of hanging.
+## Speed-limit model
 
-## Speed-Limit Prediction
+Road speeds set how long bus legs take, so missing speed limits make fastest-route times less accurate. Before this model, every untagged road was assumed to be 25 mph.
 
-Only 145 of the 1,644 roads in `davis.osm` have a posted speed limit (`maxspeed` tag). Previously, every other road was assumed to be 25 mph. RouteHacker trains a scikit-learn Random Forest on OpenStreetMap road features to predict the missing speed limits. The C++ planner uses those predictions as a fallback when it estimates route times.
-
-- **Features:** road type, lanes, oneway, name and name suffix, route reference, bridge/layer, surface, cycleway/bicycle/truck/access tags, roundabout, traffic calming, segment length, and location. Tags that encode a speed directly (`maxspeed:hgv`, `maxspeed:trailer`, ...) are excluded to avoid label leakage.
-- **Class imbalance:** an early model over-predicted 25 mph (44 predictions vs 38 true) and could never predict the 15 and 55 mph classes, which have one example each. The training script reports the class distribution, drops classes with fewer than 5 examples, and retrains with balanced class weights, so the model never outputs a speed it has no support for.
+- **Features:** road type, lanes, one-way, name and name suffix (Street, Boulevard, ...), route reference, bridge/layer, surface, cycleway/bicycle/truck/access tags, roundabout, traffic calming, segment length and location. Tags that encode a speed directly (`maxspeed:hgv`, `maxspeed:trailer`, ...) are excluded to avoid label leakage.
+- **Class imbalance:** the first model over-predicted 25 mph (44 predictions vs 38 true) and could never predict 15 or 55 mph, which have one example each. The training script reports the class distribution, drops classes with fewer than 5 examples, and retrains with balanced class weights, so the model never outputs a speed it has no support for.
 - **Results:**
 
-| Evaluation | Accuracy |
-| --- | --- |
-| Stratified 80/20 held-out test | **96.6%** |
-| Repeated stratified 5-fold CV (x10) | **97.2% ± 2.3%** |
+  | Evaluation | Accuracy |
+  | --- | --- |
+  | Stratified 80/20 held-out test | **96.6%** |
+  | Repeated stratified 5-fold CV (×10) | **97.2% ± 2.3%** |
 
-- **Integration:** [include/PredictedSpeedStreetMap.h](include/PredictedSpeedStreetMap.h) exposes each prediction as a `maxspeed:predicted` attribute. The planner resolves speed as real `maxspeed` tag → predicted speed → 25 mph default, and road speed sets bus travel time in fastest-route search. Pass `--no-predicted-speeds` to `bin/routeplanner_web` to compare against the old behavior.
+- **Integration:** [PredictedSpeedStreetMap.h](include/PredictedSpeedStreetMap.h) exposes each prediction to the planner as `maxspeed:predicted`. Speed is resolved as posted `maxspeed` → predicted speed → 25 mph default. Run `bin/routeplanner_web --no-predicted-speeds` to compare against the old behavior.
 
-Retrain and regenerate `data/speed_predictions.csv`:
+The full training report, including the diagnosis output, is in [ml/README.md](ml/README.md).
 
-```bash
-pip install -r ml/requirements.txt
-python3 ml/train.py
-```
+## Run it locally
 
-See [ml/README.md](ml/README.md) for the full training report.
-
-## Key Files
-
-- [src/routeplanner_web.cpp](src/routeplanner_web.cpp): non-interactive C++ adapter for web requests
-- [src/transplanner.cpp](src/transplanner.cpp): original CLI entry point
-- [src/DijkstraTransportationPlanner.cpp](src/DijkstraTransportationPlanner.cpp): core ECS 34 routing logic
-- [server/src/services/cppPlannerService.js](server/src/services/cppPlannerService.js): Node subprocess bridge and response normalization for the C++ planner
-- [ml/train.py](ml/train.py): speed-limit model training, imbalance diagnosis, and prediction export
-- [include/PredictedSpeedStreetMap.h](include/PredictedSpeedStreetMap.h): applies predicted speed limits to roads with no `maxspeed` tag
-- [server/src/services/routeService.js](server/src/services/routeService.js): engine selection and request caching
-- [server/src/services/legacyRouteService.js](server/src/services/legacyRouteService.js): seeded JS fallback engine kept for explicit demo/testing use
-- [shared/routeOptions.js](shared/routeOptions.js): shared UI metadata and location coordinates
-
-## Local Setup
-
-### Dev Container
-
-Open the repository in the provided dev container at [.devcontainer/devcontainer.json](.devcontainer/devcontainer.json). It includes both the C++ toolchain and the Node-based web stack.
-
-### Install Dependencies
-
-From the repo root:
+**Requirements:** Node.js 20+, a C++20 compiler, `make`, `pkg-config` and the expat headers: `libexpat1-dev` on Debian/Ubuntu, or on macOS `brew install expat pkg-config` followed by `export PKG_CONFIG_PATH="$(brew --prefix expat)/lib/pkgconfig"`. The [dev container](.devcontainer/devcontainer.json) has everything preinstalled.
 
 ```bash
-npm install
-```
-
-### Set Environment Variables
-
-Create `client/.env` from `client/.env.example` and set:
-
-```bash
-VITE_API_BASE_URL=http://localhost:3000
-```
-
-### Build the C++ Web Adapter
-
-From the repo root:
-
-```bash
-npm run build:planner
-```
-
-That builds:
-
-```text
-bin/routeplanner_web
-```
-
-The planner automatically loads the committed `data/speed_predictions.csv`. Python is only needed if you want to retrain the speed-limit model (see [Speed-Limit Prediction](#speed-limit-prediction)).
-
-### Run the App
-
-```bash
+git clone https://github.com/prithika5/routehacker.git
+cd routehacker
+npm install                          # also compiles bin/routeplanner_web
+cp client/.env.example client/.env   # points the app at http://localhost:3000
 npm run dev
 ```
 
-That starts:
+Open http://localhost:5173. The API runs on http://localhost:3000.
 
-- the API at `http://localhost:3000`
-- the client at `http://localhost:5173`
+If the planner didn't compile during install (for example, expat was missing), install the requirements and run `npm run build:planner`.
+
+### Retrain the speed-limit model (optional)
+
+```bash
+pip install -r ml/requirements.txt
+python3 ml/train.py   # prints the evaluation and rewrites data/speed_predictions.csv
+```
+
+## Tests
+
+```bash
+npm test              # API (Vitest + Supertest) and frontend (Vitest + Testing Library)
+make                  # builds and runs every C++ GoogleTest suite (then a coverage report, which needs gcovr)
+make run_tptest       # just the planner tests, including the predicted-speed fallback
+npm run build         # production build of the frontend
+```
+
+The API tests run against the JavaScript demo engine so they're fast and deterministic. The C++ planner is covered by its own GoogleTest suites, and the server logs a live planner check every time it starts.
 
 ## Deployment
 
-The API runs on Render as a Node web service rooted at `server/` ([render.yaml](render.yaml)). Its build command, `npm install`, also compiles the C++ planner: the server's `postinstall` script ([server/scripts/build-planner.mjs](server/scripts/build-planner.mjs)) runs `make bin/routeplanner_web` at the repo root. If the toolchain is missing, the install still succeeds and the API answers `CPP_PLANNER_MISSING`, which the frontend shows as a plain-language error.
+- **Frontend:** Vercel builds `client/`. Set `VITE_API_BASE_URL` to the API's URL.
+- **API:** Render runs a Node web service rooted at `server/` ([render.yaml](render.yaml)). Its build command, `npm install`, also compiles the C++ planner through the server's `postinstall` script ([build-planner.mjs](server/scripts/build-planner.mjs)). On startup the server routes one sample trip and logs `C++ planner ready: …` or the reason it's unavailable.
+- **Container (optional):** the [Dockerfile](Dockerfile) compiles the planner in a build stage and ships only the server, the binary and the data.
 
-You can also run the API as a container. The [Dockerfile](Dockerfile) compiles the planner in a build stage and ships only the server, the binary and the data:
+  ```bash
+  docker build -t routehacker-api .
+  docker run -p 3000:3000 routehacker-api
+  ```
 
-```bash
-docker build -t routehacker-api .
-docker run -p 3000:3000 -e CLIENT_ORIGIN=http://localhost:5173 routehacker-api
-```
+| Environment variable | Where | Purpose |
+| --- | --- | --- |
+| `VITE_API_BASE_URL` | frontend | URL of the API |
+| `CLIENT_ORIGIN` | API | Comma-separated origins allowed to call the API (all origins if unset) |
+| `ROUTE_ENGINE` | API | `cpp` (default) requires the C++ planner, `demo` uses the JavaScript demo graph, `auto` falls back to the demo graph if the planner is missing |
+| `CPP_PLANNER_TIMEOUT_MS` | API | Planner timeout, default `30000` |
+| `CPP_PLANNER_BINARY`, `CPP_PLANNER_DATA` | API | Override the planner binary and data paths |
 
-The frontend deploys to Vercel from `client/`, with `VITE_API_BASE_URL` set to the API's URL. Set `CLIENT_ORIGIN` on the API to the frontend's URL to restrict which sites may call it.
-
-## Engine Control
-
-The backend supports the following engine modes through `ROUTE_ENGINE`:
-
-- `cpp`: require the C++ planner
-- `demo`: use the seeded JS graph
-- `auto`: use the C++ planner when available, otherwise fall back
-
-Example:
-
-```bash
-ROUTE_ENGINE=cpp npm run dev --workspace server
-```
-
-## API Contract
+## API
 
 `POST /api/route`
-
-Request body:
 
 ```json
 {
@@ -192,44 +142,26 @@ Request body:
 }
 ```
 
-Success response includes:
+Locations: `aggie_works`, `memorial_union`, `shields_library`, `silo_terminal`, `arc`, `mondavi_center`, `west_village`, `research_park` (defined in [shared/routeOptions.js](shared/routeOptions.js)). `optimization` is `fastest` or `shortest`.
 
-- `summary`
-- `optimization`
-- `modePreference`
-- `totals`
-- `geometry`
-- `steps`
-- `breakdown`
-- `explanation`
-- `highlights`
-- `engine`
+The response includes `totals` (time and distance), `steps` (mode, instruction, distance, time), a per-mode `breakdown`, GeoJSON `geometry`, and `engine: "cpp"`. Errors come back as `{ "error": { "code", "message" } }`, for example `SAME_LOCATION`, `CPP_PLANNER_TIMEOUT` or `CPP_PLANNER_MISSING`.
 
-The API also exposes `GET /api/health`.
+`GET /api/health` returns `{ "status": "ok" }`.
 
-## Testing
+## Project structure
 
-Useful commands:
-
-```bash
-npm run test
-npm run test:server
-npm run test:client
-npm run build
-make
-make run_tptest       # C++ planner tests, including the predicted-speed fallback
-python3 ml/train.py   # retrain and print the speed-limit model's evaluation
+```text
+client/      React + Vite frontend (map, trip form, strip-map directions)
+server/      Express API and the bridge to the C++ planner
+shared/      Location and mode definitions used by both
+src/         C++ planner: OSM/XML parsing, bus system, Dijkstra, web adapter
+include/     C++ headers, including the predicted-speed street map
+testsrc/     GoogleTest suites for the C++ code
+ml/          Speed-limit model: features, training, evaluation report
+data/        davis.osm, bus stops and routes, predicted speed limits
+docs/        C++ class docs and screenshots
 ```
 
-The automated server tests explicitly run in demo mode for determinism and speed. The real C++ path was validated separately by compiling `bin/routeplanner_web` and exercising it through the Express service.
+## Background
 
-## Legacy Planner
-
-The original ECS 34 Project 4 C++ planner still lives in:
-
-- `src/`
-- `include/`
-- `testsrc/`
-- `Makefile`
-
-That preserves the original course project structure while RouteHacker demonstrates how to turn the planner into a product-facing web app.
+RouteHacker started as the transportation planner from UC Davis ECS 34 (Project 4): a command-line C++ program for routing over OpenStreetMap and bus data. The original CLI ([transplanner.cpp](src/transplanner.cpp)) and its tests are still here. RouteHacker wraps that engine in a web app, makes it fast enough to serve live requests, and adds the speed-limit model.
