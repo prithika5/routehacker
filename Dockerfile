@@ -20,7 +20,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY server/package.json ./server/
 COPY client/package.json ./client/
-RUN npm ci --omit=dev --workspace server --include-workspace-root=false
+RUN npm ci --omit=dev --ignore-scripts --workspace server --include-workspace-root=false
 COPY server ./server
 COPY shared ./shared
 COPY data ./data

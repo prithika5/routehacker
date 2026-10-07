@@ -7,7 +7,8 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "build": "node -e \"console.log('Server build step not required for this MVP.')\"",
-    "test": "vitest run"
+    "test": "vitest run",
+    "postinstall": "node scripts/build-planner.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",
