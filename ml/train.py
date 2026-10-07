@@ -7,8 +7,7 @@ Pipeline
      prediction distribution on unlabeled roads).
   4. v2: drop classes without enough support to learn or evaluate, retrain
      with balanced class weights.
-  5. Evaluate v2 on a stratified held-out split (+ repeated CV, + a stricter
-     street-grouped split), then fit on all retained labels and write
+  5. Evaluate v2 on a stratified held-out split (+ repeated CV), then fit on all retained labels and write
      predictions for roads with no maxspeed tag.
 
 Outputs
@@ -30,7 +29,6 @@ import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import (
-    GroupKFold,
     KFold,
     RepeatedStratifiedKFold,
     cross_val_predict,
@@ -136,7 +134,7 @@ def main():
     # ------------------------------------------------------------------ v2
     section(f"4. v2: classes {kept}, balanced class weights")
     kept_df = labeled[labeled.speed_mph.isin(kept)]
-    X2, y2, g2 = kept_df[cols], kept_df.speed_mph, kept_df.name
+    X2, y2 = kept_df[cols], kept_df.speed_mph
 
     X_tr, X_te, y_tr, y_te = train_test_split(
         X2, y2, test_size=TEST_SIZE, stratify=y2, random_state=SEED)
@@ -152,11 +150,6 @@ def main():
                           cv=RepeatedStratifiedKFold(n_splits=5, n_repeats=10, random_state=SEED))
     print(f"\n  Repeated stratified 5-fold CV (x10): {rcv.mean():.3f} +/- {rcv.std():.3f}")
 
-    grp_pred = cross_val_predict(make_model("balanced"), X2, y2, groups=g2, cv=GroupKFold(5))
-    grp_acc = accuracy_score(y2, grp_pred)
-    print(f"  Street-grouped 5-fold CV (no street in both train and test): {grp_acc:.3f}")
-    print("    (stricter: a class backed by one street, e.g. 35 mph = West Covell Blvd only,")
-    print("     cannot be predicted when that street is held out)")
 
     # Same protocol as v1 for an apples-to-apples comparison on the kept classes.
     v1_on_kept = accuracy_score(y2, cross_val_predict(
@@ -184,7 +177,6 @@ def main():
         "holdout_confusion": confusion_matrix(y_te, te_pred, labels=kept).tolist(),
         "repeated_cv_mean": float(rcv.mean()),
         "repeated_cv_std": float(rcv.std()),
-        "street_grouped_cv_accuracy": grp_acc,
         "kfold_cv_accuracy": v2_same_cv,
         "v1_kfold_cv_accuracy_on_kept_classes": v1_on_kept,
         "unlabeled_pred_distribution": dist(pred),

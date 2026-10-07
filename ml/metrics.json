@@ -148,7 +148,6 @@
     ],
     "repeated_cv_mean": 0.9720197044334976,
     "repeated_cv_std": 0.023223401145104447,
-    "street_grouped_cv_accuracy": 0.6433566433566433,
     "kfold_cv_accuracy": 0.972027972027972,
     "v1_kfold_cv_accuracy_on_kept_classes": 0.972027972027972,
     "unlabeled_pred_distribution": {

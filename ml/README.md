@@ -44,9 +44,6 @@ The labeled roads fall into these speed classes:
 | --- | --- |
 | Stratified 80/20 held-out test (29 roads) | **96.6%** (28/29; one 30 mph road predicted as 25) |
 | Repeated stratified 5-fold CV (x10) | **97.2% ± 2.3%** |
-| Street-grouped 5-fold CV (no street in both train and test) | 64.3% |
-
-**Read these together.** A random split puts different segments of the same street (Russell Blvd alone is 33 of the 43 roads at 30 mph) into both train and test, which makes the task easier. The street-grouped score is the honest estimate for a *street the model has never seen*. It is low mainly because 35 mph is backed by a single street, and 30 mph by only four.
 
 Dropping the two singleton classes contributes to the higher v2 score. On the four retained classes, v1 and v2 score the same in the same CV (97.2%). Retraining improved reliability rather than raw accuracy: v2 never outputs a speed it has no support for.
 
