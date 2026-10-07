@@ -2,7 +2,6 @@
 #include <string>
 #include <vector>
 #include <expat.h>
-#include <unordered_map>
 
 struct CXMLReader::SImplementation{
 
@@ -10,6 +9,7 @@ struct CXMLReader::SImplementation{
     std::string text;
     std::vector<SXMLEntity> entities;
     int index;
+    XML_Parser DParser = nullptr;
 
     SImplementation(std::shared_ptr<CDataSource> src){
 
@@ -43,101 +43,13 @@ struct CXMLReader::SImplementation{
         std::string wrapped = "<root>" + cleaned + "</root>";
 
         XML_Parser parser = XML_ParserCreate(NULL);
+        DParser = parser;
         XML_SetUserData(parser,this);
         XML_SetElementHandler(parser,startHandler,endHandler);
         XML_SetCharacterDataHandler(parser,charHandler);
         XML_Parse(parser,wrapped.c_str(),(int)wrapped.size(),1);
         XML_ParserFree(parser);
-
-        fixSelfClosing();
-    }
-
-    void fixSelfClosing(){
-
-        std::unordered_map<std::string,int> tagCount;
-
-        for(size_t i=0;i+1<entities.size();){
-            if(entities[i].DType != SXMLEntity::EType::StartElement){
-                i++;
-                continue;
-            }
-
-            std::string tagName = entities[i].DNameData;
-            int occurrence = tagCount[tagName]++;
-
-            size_t j = i+1;
-            while(j<entities.size()){
-                if(entities[j].DType == SXMLEntity::EType::EndElement &&
-                   entities[j].DNameData == tagName){
-                    break;
-                }
-                j++;
-            }
-
-            if(j>=entities.size()){
-                i++;
-                continue;
-            }
-
-            bool onlySpace = true;
-
-            for(size_t k=i+1;k<j;k++){
-                if(entities[k].DType != SXMLEntity::EType::CharData){
-                    onlySpace = false;
-                    break;
-                }
-
-                for(char c : entities[k].DNameData){
-                    if(c!=' ' && c!='\t' && c!='\n' && c!='\r'){
-                        onlySpace = false;
-                        break;
-                    }
-                }
-
-                if(!onlySpace) break;
-            }
-
-            if(onlySpace && isSelfClosing(tagName,occurrence)){
-                entities[i].DType = SXMLEntity::EType::CompleteElement;
-                entities.erase(entities.begin()+i+1,entities.begin()+j+1);
-            }
-            else{
-                i++;
-            }
-        }
-    }
-
-    bool isSelfClosing(const std::string &tagName,int occurrence){
-
-        std::string openTag = "<"+tagName;
-        size_t pos = 0;
-        int count = 0;
-
-        while((pos = text.find(openTag,pos)) != std::string::npos){
-
-            size_t nextPos = pos + openTag.size();
-            if(nextPos < text.size()){
-                char nextChar = text[nextPos];
-                if(nextChar!=' ' && nextChar!='\t' && nextChar!='\n' &&
-                   nextChar!='\r' && nextChar!='>' && nextChar!='/'){
-                    pos++;
-                    continue;
-                }
-            }
-
-            if(count==occurrence){
-                size_t endPos = text.find('>',pos);
-                if(endPos!=std::string::npos && endPos>0){
-                    return text[endPos-1]=='/';
-                }
-                return false;
-            }
-
-            count++;
-            pos++;
-        }
-
-        return false;
+        DParser = nullptr;
     }
 
     static void startHandler(void *data,const XML_Char *name,const XML_Char **atts){
@@ -163,6 +75,17 @@ struct CXMLReader::SImplementation{
     static void endHandler(void *data,const XML_Char *name){
         
         SImplementation *self = (SImplementation*)data;
+
+        // Expat reports an empty-element tag (<tag/>) as a start immediately
+        // followed by an end that consumes zero bytes. Fold that pair into a
+        // single CompleteElement instead of rescanning the source text.
+        if(self->DParser && XML_GetCurrentByteCount(self->DParser) == 0 &&
+           !self->entities.empty() &&
+           self->entities.back().DType == SXMLEntity::EType::StartElement &&
+           self->entities.back().DNameData == name){
+            self->entities.back().DType = SXMLEntity::EType::CompleteElement;
+            return;
+        }
 
         SXMLEntity entity;
         entity.DType = SXMLEntity::EType::EndElement;

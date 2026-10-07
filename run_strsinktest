@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuites tests="3" failures="0" disabled="0" errors="0" time="0" timestamp="2026-03-10T04:27:46.379" name="AllTests">
-  <testsuite name="StringDataSink" tests="3" failures="0" disabled="0" skipped="0" errors="0" time="0" timestamp="2026-03-10T04:27:46.379">
-    <testcase name="EmptyTest" status="run" result="completed" time="0" timestamp="2026-03-10T04:27:46.379" classname="StringDataSink" />
-    <testcase name="PutTest" status="run" result="completed" time="0" timestamp="2026-03-10T04:27:46.379" classname="StringDataSink" />
-    <testcase name="WriteTest" status="run" result="completed" time="0" timestamp="2026-03-10T04:27:46.379" classname="StringDataSink" />
-  </testsuite>
-</testsuites>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const fallbackCenter = {
   latitude: 38.5425,
@@ -28,10 +28,10 @@ function getBounds(points) {
 
 function createMarkerIcon(role) {
   return {
-    html: `<button type="button" class="map-marker ${role}"><span class="map-marker-badge">${role === "start" ? "A" : "B"}</span></button>`,
+    html: `<span class="map-marker ${role}" aria-hidden="true"><span>${role === "start" ? "A" : "B"}</span></span>`,
     className: "leaflet-marker-shell",
     iconSize: [34, 34],
-    iconAnchor: [17, 17]
+    iconAnchor: [17, 41]
   };
 }
 
@@ -43,9 +43,10 @@ export default function MapView({ startLocation, endLocation, route, loading }) 
   const endMarkerRef = useRef(null);
   const routeLineRef = useRef(null);
   const glowLineRef = useRef(null);
+  const [mapReady, setMapReady] = useState(false);
   const interactiveReady = import.meta.env.MODE !== "test";
 
-  const routeCoordinates = route?.geometry?.coordinates || [];
+  const routeCoordinates = useMemo(() => route?.geometry?.coordinates || [], [route]);
   const selectedPoints = useMemo(() => {
     const points = [];
 
@@ -90,22 +91,23 @@ export default function MapView({ startLocation, endLocation, route, loading }) 
       }).addTo(map);
 
       glowLineRef.current = L.polyline([], {
-        color: "#f7c873",
-        weight: 14,
-        opacity: 0.45,
+        color: "#ffffff",
+        weight: 11,
+        opacity: 0.95,
         lineCap: "round",
         lineJoin: "round"
       }).addTo(map);
 
       routeLineRef.current = L.polyline([], {
-        color: "#111827",
-        weight: 7,
-        opacity: 0.92,
+        color: "#00a4a8",
+        weight: 6,
+        opacity: 1,
         lineCap: "round",
         lineJoin: "round"
       }).addTo(map);
 
       mapRef.current = map;
+      setMapReady(true);
     }
 
     initializeMap();
@@ -160,7 +162,7 @@ export default function MapView({ startLocation, endLocation, route, loading }) 
         icon: L.divIcon(createMarkerIcon("end"))
       }).addTo(mapRef.current);
     }
-  }, [endLocation?.coordinates, interactiveReady, startLocation?.coordinates]);
+  }, [endLocation?.coordinates, interactiveReady, mapReady, startLocation?.coordinates]);
 
   useEffect(() => {
     if (!interactiveReady || !mapRef.current || !routeLineRef.current || !glowLineRef.current) {
@@ -192,20 +194,18 @@ export default function MapView({ startLocation, endLocation, route, loading }) 
         [bounds.north, bounds.east]
       ],
       {
-        paddingTopLeft: [64, 64],
-        paddingBottomRight: [64, 64],
-        maxZoom: 15
+        // Keep the route clear of the trip sheet, which covers the left edge on wide screens.
+        paddingTopLeft: [globalThis.innerWidth >= 900 ? 460 : 40, 48],
+        paddingBottomRight: [48, 48],
+        maxZoom: 16
       }
     );
-  }, [interactiveReady, routeCoordinates, selectedPoints]);
+  }, [interactiveReady, mapReady, routeCoordinates, selectedPoints]);
 
   if (!interactiveReady) {
     return (
       <section className="map-surface static" aria-label="Map preview">
-        <div className="map-static-card">
-          <p>Map preview</p>
-          <span>Routes appear here.</span>
-        </div>
+
       </section>
     );
   }
@@ -213,10 +213,12 @@ export default function MapView({ startLocation, endLocation, route, loading }) 
   return (
     <section className="map-surface">
       <div ref={containerRef} className="map-canvas" />
-      <div className={`map-status ${loading ? "is-loading" : ""}`}>
-        <span className="map-status-dot" aria-hidden="true" />
-        <p>{loading ? "Loading route..." : "Live map"}</p>
-      </div>
+      {loading ? (
+        <div className="map-status" aria-hidden="true">
+          <span className="map-status-dot" />
+          Finding route…
+        </div>
+      ) : null}
     </section>
   );
 }

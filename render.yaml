@@ -1,11 +1,12 @@
 services:
   - type: web
     name: routehacker-api
-    runtime: node
-    rootDir: server
-    buildCommand: npm install
-    startCommand: npm run start
+    runtime: docker
+    dockerfilePath: ./Dockerfile
     plan: free
+    healthCheckPath: /api/health
     envVars:
-      - key: NODE_VERSION
-        value: 20
+      - key: ROUTE_ENGINE
+        value: cpp
+      - key: CLIENT_ORIGIN
+        value: https://routehacker.vercel.app

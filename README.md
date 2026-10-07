@@ -2,7 +2,7 @@
 
 RouteHacker is a full-stack transportation planner for UC Davis. It wraps the original ECS 34 C++ routing project in a React frontend and Express API so users can request routes on a real map instead of through a CLI.
 
-The app now runs the real OpenStreetMap-based C++ planner by default for route requests. The frontend is designed as a polished demo surface for that planner: clean trip planning controls, a live map, and compact route output that is easier to scan and trust.
+Every route request runs the real OpenStreetMap-based C++ planner, which answers in about a tenth of a second. Results show the trip time, a walking/bus breakdown, and directions drawn as a strip map: dotted legs for walking, solid teal legs for buses with their route letters.
 
 ## Live Demo
 
@@ -11,17 +11,10 @@ The app now runs the real OpenStreetMap-based C++ planner by default for route r
 
 ## Screenshots
 
-### Clean Empty State
-
-![Route results](docs/screenshots/Img2.png)
-
-### Shortest Route Result
-
-![Alternate route view](docs/screenshots/Img3.png)
-
-### Fastest Route Result
-
-![Additional app view](docs/screenshots/Img4.png)
+<p>
+  <img src="docs/screenshots/desktop-route.png" alt="Fastest route from AggieWorks Studio to West Village on desktop" width="72%" />
+  <img src="docs/screenshots/phone-directions.png" alt="Strip-map directions on a phone" width="24%" />
+</p>
 
 ## Highlights
 
@@ -68,9 +61,9 @@ That means the strongest demo path is:
 }
 ```
 
-### Performance Note
+### Performance
 
-The real C++ planner can take noticeably longer than the demo engine in local development. A route request may take around 20 seconds depending on the trip and environment. The backend includes a timeout guard so stalled planner calls fail explicitly instead of hanging forever.
+A route request takes about 0.14 seconds end to end. It used to take about 15 seconds: profiling showed 90% of the time in the XML reader, which rescanned the whole 1.2 MB map file for every self-closing tag. The reader now uses expat's own empty-element signal instead, with identical output. The backend still has a timeout guard (`CPP_PLANNER_TIMEOUT_MS`, default 30 s) so a stalled planner call fails clearly instead of hanging.
 
 ## Speed-Limit Prediction
 
@@ -157,6 +150,17 @@ That starts:
 - the API at `http://localhost:3000`
 - the client at `http://localhost:5173`
 
+## Deployment
+
+The API deploys to Render as a Docker service ([Dockerfile](Dockerfile), [render.yaml](render.yaml)). The image compiles `routeplanner_web` in a build stage, then runs the Express server with the binary, the map and bus data, and the speed predictions. Only the server's production dependencies are installed.
+
+```bash
+docker build -t routehacker-api .
+docker run -p 3000:3000 -e CLIENT_ORIGIN=http://localhost:5173 routehacker-api
+```
+
+The frontend deploys to Vercel from `client/`, with `VITE_API_BASE_URL` set to the API's URL. Set `CLIENT_ORIGIN` on the API to the frontend's URL so the browser is allowed to call it.
+
 ## Engine Control
 
 The backend supports the following engine modes through `ROUTE_ENGINE`:
@@ -169,12 +173,6 @@ Example:
 
 ```bash
 ROUTE_ENGINE=cpp npm run dev --workspace server
-```
-
-If you need more time for the real planner locally, you can raise the timeout:
-
-```bash
-CPP_PLANNER_TIMEOUT_MS=30000 npm run dev
 ```
 
 ## API Contract

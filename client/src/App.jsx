@@ -16,6 +16,7 @@ export default function App() {
   const activeLocations = useMemo(() => locationOptions.filter((location) => location.status === "active"), []);
   const [formState, setFormState] = useState(defaultForm);
   const [route, setRoute] = useState(null);
+  const [routeForm, setRouteForm] = useState(null);
   const [error, setError] = useState("");
   const [validationError, setValidationError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,53 +25,50 @@ export default function App() {
 
   const startLocation = getLocationOptionById(formState.start);
   const endLocation = getLocationOptionById(formState.end);
+  // Label the result with the places it was computed for, even if the form changes afterwards.
+  const resultStart = getLocationOptionById((routeForm || formState).start);
+  const resultEnd = getLocationOptionById((routeForm || formState).end);
 
-  function updateLocation(field, locationId) {
+  function updateForm(patch) {
     setValidationError("");
-    setFormState((current) => ({
-      ...current,
-      [field]: locationId
-    }));
+    setFormState((current) => ({ ...current, ...patch }));
   }
 
-  async function handleSubmit(event) {
-    event.preventDefault();
+  async function findRoute() {
     setValidationError("");
     setError("");
 
     if (formState.start === formState.end) {
       setRoute(null);
-      setValidationError("Start and destination must be different.");
+      setValidationError("Pick two different places.");
       return;
     }
 
     requestRef.current?.abort();
 
-    const controller = new AbortController();
-    const cacheKey = JSON.stringify(formState);
+    const submitted = formState;
+    const cacheKey = JSON.stringify(submitted);
     const cachedRoute = cacheRef.current.get(cacheKey);
 
     if (cachedRoute) {
       startTransition(() => {
         setRoute(cachedRoute);
-        setError("");
+        setRouteForm(submitted);
       });
       return;
     }
 
+    const controller = new AbortController();
     requestRef.current = controller;
     setLoading(true);
 
     try {
-      const nextRoute = await requestRoute(formState, {
-        signal: controller.signal
-      });
-
+      const nextRoute = await requestRoute(submitted, { signal: controller.signal });
       cacheRef.current.set(cacheKey, nextRoute);
 
       startTransition(() => {
         setRoute(nextRoute);
-        setError("");
+        setRouteForm(submitted);
       });
     } catch (requestError) {
       if (requestError.name === "AbortError") {
@@ -93,7 +91,7 @@ export default function App() {
     <main className="app-shell">
       <MapView startLocation={startLocation} endLocation={endLocation} route={route} loading={loading} />
 
-      <div className="app-layout">
+      <aside className="sheet">
         <RouteForm
           startLocation={startLocation}
           endLocation={endLocation}
@@ -101,25 +99,24 @@ export default function App() {
           optimization={formState.optimization}
           loading={loading}
           validationError={validationError}
-          onLocationSelect={updateLocation}
-          onOptimizationChange={(optimization) =>
-            setFormState((current) => ({
-              ...current,
-              optimization
-            }))
-          }
-          onSwap={() =>
-            setFormState((current) => ({
-              ...current,
-              start: current.end,
-              end: current.start
-            }))
-          }
-          onSubmit={handleSubmit}
+          onLocationSelect={(field, locationId) => updateForm({ [field]: locationId })}
+          onOptimizationChange={(optimization) => updateForm({ optimization })}
+          onSwap={() => updateForm({ start: formState.end, end: formState.start })}
+          onSubmit={(event) => {
+            event.preventDefault();
+            findRoute();
+          }}
         />
 
-        <RouteResults route={route} error={error} loading={loading} formState={formState} />
-      </div>
+        <RouteResults
+          route={route}
+          error={error}
+          loading={loading}
+          startLocation={resultStart}
+          endLocation={resultEnd}
+          onRetry={findRoute}
+        />
+      </aside>
     </main>
   );
 }
